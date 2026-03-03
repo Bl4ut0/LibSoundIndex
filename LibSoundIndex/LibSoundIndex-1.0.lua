@@ -118,10 +118,10 @@ end
 -- =============================================================================
 
 --- Get all FileDataIDs for a SoundKitID
--- @param soundKitID string|number - The SoundKit constant name (or ID) to look up
--- @return table|nil - Numerically indexed table of FileDataIDs, or empty table
+-- @param soundKitID string|number - The SoundKit constant name (or numeric ID) to look up
+-- @return table - Numerically indexed table of FileDataIDs, or empty table
 function lib:GetFileDataIDs(soundKitID)
-    -- Allow direct string lookup if they pass "IG_BACKPACK_OPEN" directly
+    -- String lookup: check named SoundKitData first
     local key = soundKitID
     if type(soundKitID) == "number" and self.SoundKitByName then
         key = self.SoundKitByName[soundKitID]
@@ -130,7 +130,37 @@ function lib:GetFileDataIDs(soundKitID)
     if self.SoundKitData and key and self.SoundKitData[key] then
         return GetArrayForCurrentClient(self.SoundKitData[key])
     end
+
+    -- Fallthrough: check the universal SoundKitLookup table (numeric ID only)
+    if type(soundKitID) == "number" and self.SoundKitLookup and self.SoundKitLookup[soundKitID] then
+        return self.SoundKitLookup[soundKitID]
+    end
+
     return {}
+end
+
+--- Get all FileDataIDs for a numeric SoundKitID directly (bypasses named constants)
+-- @param soundKitID number - The numeric SoundKitID
+-- @return table - Numerically indexed table of FileDataIDs, or empty table
+function lib:GetFileDataIDsBySoundKitID(soundKitID)
+    if self.SoundKitLookup and self.SoundKitLookup[soundKitID] then
+        return self.SoundKitLookup[soundKitID]
+    end
+    return {}
+end
+
+--- Get the total number of indexed SoundKitIDs (named + universal lookup)
+-- @return number namedCount, number lookupCount
+function lib:GetSoundKitCount()
+    local named = 0
+    if self.SoundKitData then
+        for _ in pairs(self.SoundKitData) do named = named + 1 end
+    end
+    local lookup = 0
+    if self.SoundKitLookup then
+        for _ in pairs(self.SoundKitLookup) do lookup = lookup + 1 end
+    end
+    return named, lookup
 end
 
 --- Get all available sound categories
@@ -402,12 +432,21 @@ function lib:PrintInfo()
             soundKitFileCount = soundKitFileCount + #GetArrayForCurrentClient(data)
         end
     end
+    local lookupCount = 0
+    local lookupFileCount = 0
+    if self.SoundKitLookup then
+        for _, fdids in pairs(self.SoundKitLookup) do
+            lookupCount = lookupCount + 1
+            lookupFileCount = lookupFileCount + #fdids
+        end
+    end
     local mutedCount = 0
     for _ in pairs(self.mutedFiles) do mutedCount = mutedCount + 1 end
 
-    print("|cff00ff00LibSoundIndex-1.0|r")
+    print("|cff00ff00LibSoundIndex-1.0|r (" .. GetClientKey() .. ")")
     print(("  Material sounds: %d groups, %d FileDataIDs"):format(materialCount, materialFileCount))
-    print(("  SoundKit entries: %d kits, %d FileDataIDs"):format(soundKitCount, soundKitFileCount))
+    print(("  Named SoundKits: %d kits, %d FileDataIDs"):format(soundKitCount, soundKitFileCount))
+    print(("  Universal Lookup: %d SoundKitIDs, %d FileDataIDs"):format(lookupCount, lookupFileCount))
     print(("  Currently muted: %d FileDataIDs"):format(mutedCount))
 end
 
