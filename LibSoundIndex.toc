@@ -1,0 +1,15 @@
+## Interface: 11507
+## Title: LibSoundIndex-1.0
+## Notes: Universal sound index and muting library for WoW addons (Classic Era & TBC Anniversary).
+## Author: Bl4ut
+## Version: 1.0.0
+## X-Category: Library
+## X-License: MIT
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+
+Data\MaterialSounds.lua
+Data\SoundKitIndex.lua
+
+LibSoundIndex-1.0.lua

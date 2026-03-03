@@ -1,0 +1,48 @@
+# Built application files
+*.obj
+*.o
+*.a
+*.lib
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Package Manager
+node_modules/
+.npm/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+*~
+
+# WoW Addon specific excludes
+*.bak
+*.old
+.luacheckrc
+.gitattributes
+
+# Test output
+/.coverage
+/coverage/
+
+# Tmp files 
+tmp/
+*.tmp
+
+#Repo Docs
+GITHUB_DESCRIPTION.md
+CURSEFORGE_DESCRIPTION.md
+.CSV
