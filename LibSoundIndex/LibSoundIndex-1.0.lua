@@ -391,7 +391,7 @@ function lib:PrintInfo()
     if self.MaterialSounds then
         for _, data in pairs(self.MaterialSounds) do
             materialCount = materialCount + 1
-            materialFileCount = materialFileCount + #data.fileDataIDs
+            materialFileCount = materialFileCount + #GetArrayForCurrentClient(data)
         end
     end
     local soundKitCount = 0
@@ -399,7 +399,7 @@ function lib:PrintInfo()
     if self.SoundKitData then
         for _, data in pairs(self.SoundKitData) do
             soundKitCount = soundKitCount + 1
-            soundKitFileCount = soundKitFileCount + #data.fileDataIDs
+            soundKitFileCount = soundKitFileCount + #GetArrayForCurrentClient(data)
         end
     end
     local mutedCount = 0
