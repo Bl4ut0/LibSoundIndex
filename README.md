@@ -4,7 +4,7 @@ A standalone, embeddable WoW addon library that provides a complete index of gam
 **Replaces the blunt `SetCVar("Sound_EnableSFX", "0")` approach** that kills all game audio during gear swaps, causing noticeable silence patches in group play.
 
 ## Features
-- **869 resolved SoundKitIDs** → FileDataIDs dynamically aggregated from Retail, MoP Classic, TBC Anniversary, and Classic Era DB2 data. Includes sounds across ui, combat, arena, dungeon finders, collections, and events (e.g., *Fel Reaver*, *You Are Not Prepared*).
+- **Up to 315,000+ resolved SoundKitIDs** → FileDataIDs dynamically aggregated from Retail, MoP Classic, TBC Anniversary, and Classic Era DB2 data. Includes sounds across ui, combat, arena, dungeon finders, collections, and events (e.g., *Fel Reaver*, *You Are Not Prepared*). Every game sound is indexed.
 - Complete automated tracking of **equip/foley/sheathe** FileDataIDs covering all armor and weapon material types across all 4 client versions. Automatically intercepts character screen gear swap audio events directly from the CASC file structure.
 - **Surgical muting** — mute only the specific sounds you want, everything else plays normally.
 - **Category-based API** — mute entire sound categories at once (e.g., all plate foley, all UI quest sounds, or transmog events).
