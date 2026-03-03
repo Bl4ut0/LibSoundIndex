@@ -13,7 +13,20 @@ LibSoundIndex-1.0.lua
 
 Data\MaterialSounds.lua
 Data\SoundKitIndex.lua
-Data\SoundKitLookup_Vanilla.lua
-Data\SoundKitLookup_TBC.lua
-Data\SoundKitLookup_MoP.lua
-Data\SoundKitLookup_Retail.lua
+Data\SoundKitLookup_Vanilla_1.lua
+Data\SoundKitLookup_TBC_1.lua
+Data\SoundKitLookup_MoP_1.lua
+Data\SoundKitLookup_MoP_2.lua
+Data\SoundKitLookup_Retail_1.lua
+Data\SoundKitLookup_Retail_2.lua
+Data\SoundKitLookup_Retail_3.lua
+Data\SoundKitLookup_Retail_4.lua
+Data\SoundKitLookup_Retail_5.lua
+Data\SoundKitLookup_Retail_6.lua
+Data\SoundKitLookup_Retail_7.lua
+Data\SoundKitLookup_Retail_8.lua
+Data\SoundKitLookup_Retail_9.lua
+Data\SoundKitLookup_Retail_10.lua
+Data\SoundKitLookup_Retail_11.lua
+Data\SoundKitLookup_Retail_12.lua
+Data\SoundKitLookup_Retail_13.lua
