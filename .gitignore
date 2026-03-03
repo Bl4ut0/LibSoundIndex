@@ -18,6 +18,7 @@ node_modules/
 .npm/
 
 # IDE/Editor files
+.agent/
 .vscode/
 .idea/
 *.suo
@@ -34,6 +35,11 @@ node_modules/
 .luacheckrc
 .gitattributes
 
+# RSource Data
+RawData/
+BlizzardInterfaceCode/
+
+
 # Test output
 /.coverage
 /coverage/
@@ -45,4 +51,5 @@ tmp/
 #Repo Docs
 GITHUB_DESCRIPTION.md
 CURSEFORGE_DESCRIPTION.md
-.CSV
+*.csv
+*.py

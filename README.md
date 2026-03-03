@@ -4,8 +4,8 @@ A standalone, embeddable WoW addon library that provides a complete index of gam
 **Replaces the blunt `SetCVar("Sound_EnableSFX", "0")` approach** that kills all game audio during gear swaps, causing noticeable silence patches in group play.
 
 ## Features
-- **213 resolved SoundKitIDs** → FileDataIDs from TBC Anniversary and Classic Era DB2 data. Includes sounds across ui, combat, arena, dungeon finders, collections, and events (e.g., *Fel Reaver*, *You Are Not Prepared*).
-- **34 equip/foley/sheathe** FileDataIDs covering all armor and weapon material types. Automatically intercepts character screen gear swap audio events directly from the CASC file structure.
+- **869 resolved SoundKitIDs** → FileDataIDs dynamically aggregated from Retail, MoP Classic, TBC Anniversary, and Classic Era DB2 data. Includes sounds across ui, combat, arena, dungeon finders, collections, and events (e.g., *Fel Reaver*, *You Are Not Prepared*).
+- Complete automated tracking of **equip/foley/sheathe** FileDataIDs covering all armor and weapon material types across all 4 client versions. Automatically intercepts character screen gear swap audio events directly from the CASC file structure.
 - **Surgical muting** — mute only the specific sounds you want, everything else plays normally.
 - **Category-based API** — mute entire sound categories at once (e.g., all plate foley, all UI quest sounds, or transmog events).
 - **Duration-based muting** — auto-unmute after a timeout (perfect for mitigating gear swap audio).
@@ -13,11 +13,12 @@ A standalone, embeddable WoW addon library that provides a complete index of gam
 
 ## Compatibility
 
-| Client | Interface | Status |
-|--------|-----------|--------|
-| Classic Era Anniversary | 11507 | ✅ Supported |
-| TBC Anniversary | 20505 | ✅ Supported |
-| Wrath Anniversary | 30403 | ✅ Should work |
+| Client | Status |
+|--------|--------|
+| Retail / Modern | ✅ Supported |
+| MoP Classic | ✅ Supported |
+| TBC Anniversary | ✅ Supported |
+| Classic Era / SoD / Hardcore | ✅ Supported |
 
 > `MuteSoundFile()` / `UnmuteSoundFile()` have been seamlessly supported in the WoW Client since Classic Era 1.14.0.
 

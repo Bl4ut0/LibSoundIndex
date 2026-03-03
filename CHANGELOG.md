@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [1.1.0] - Universal Multi-Client Expansion
+- **Universal Support**: The library now dynamically serves over **869 `SOUNDKIT` constants** and all foley/equip sounds natively across four game clients: WoW Classic Era (Vanilla), The Burning Crusade Classic (TBC), Mists of Pandaria Classic (MoP), and modern Retail!
+- Rebuilt the internal database creation structure using aggregation scripts that drill through DB2 raw data across expansions.
+- Refactored `LibSoundIndex-1.0.lua` to automatically detect the current `WOW_PROJECT_ID` at runtime and switch to the exact CASC file IDs corresponding to the user's active game client.
+
 ## [1.0.0] - Initial Release
 - **Initial deployment** of LibSoundIndex-1.0.
 - Implemented comprehensive mapping tool utilizing `MuteSoundFile()` and `UnmuteSoundFile()` APIs.

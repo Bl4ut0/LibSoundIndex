@@ -65,12 +65,39 @@ local function UnmuteFile(fileDataID)
     end
 end
 
+local WOW_PROJECT_ID = _G.WOW_PROJECT_ID or _G.WOW_PROJECT_MAINLINE
+
+local function GetClientKey()
+    if WOW_PROJECT_ID == _G.WOW_PROJECT_CLASSIC then return "Vanilla" end
+    if WOW_PROJECT_ID == _G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC then return "TBC" end
+    -- Fallback assuming future MoP classic expansion IDs etc. will check in correctly
+    if WOW_PROJECT_ID == 14 then return "MoP" end -- Internal designation for MoP Classic
+    return "Retail" -- Default fallback
+end
+
+local function GetArrayForCurrentClient(node)
+    if not node then return {} end
+    local key = GetClientKey()
+    
+    -- Exact match
+    if node[key] then return node[key] end
+    
+    -- Fallbacks (e.g., if Retail isn't populated, fall back to MoP, etc. - ascending)
+    if node.Retail then return node.Retail end
+    if node.MoP then return node.MoP end
+    if node.TBC then return node.TBC end
+    if node.Vanilla then return node.Vanilla end
+    
+    return {}
+end
+
 local function CollectCategoryFileDataIDs(category)
     local ids = {}
     if lib.SoundKitData then
         for _, data in pairs(lib.SoundKitData) do
             if data.category == category then
-                for _, fdid in ipairs(data.fileDataIDs) do
+                local fdids = GetArrayForCurrentClient(data)
+                for _, fdid in ipairs(fdids) do
                     ids[#ids + 1] = fdid
                 end
             end
@@ -81,7 +108,7 @@ end
 
 local function CollectMaterialFileDataIDs(materialKey)
     if lib.MaterialSounds and lib.MaterialSounds[materialKey] then
-        return lib.MaterialSounds[materialKey].fileDataIDs
+        return GetArrayForCurrentClient(lib.MaterialSounds[materialKey])
     end
     return {}
 end
@@ -91,13 +118,19 @@ end
 -- =============================================================================
 
 --- Get all FileDataIDs for a SoundKitID
--- @param soundKitID number - The SoundKitID to look up
--- @return table|nil - Numerically indexed table of FileDataIDs, or nil
+-- @param soundKitID string|number - The SoundKit constant name (or ID) to look up
+-- @return table|nil - Numerically indexed table of FileDataIDs, or empty table
 function lib:GetFileDataIDs(soundKitID)
-    if self.SoundKitData and self.SoundKitData[soundKitID] then
-        return self.SoundKitData[soundKitID].fileDataIDs
+    -- Allow direct string lookup if they pass "IG_BACKPACK_OPEN" directly
+    local key = soundKitID
+    if type(soundKitID) == "number" and self.SoundKitByName then
+        key = self.SoundKitByName[soundKitID]
     end
-    return nil
+
+    if self.SoundKitData and key and self.SoundKitData[key] then
+        return GetArrayForCurrentClient(self.SoundKitData[key])
+    end
+    return {}
 end
 
 --- Get all available sound categories
@@ -120,12 +153,14 @@ function lib:GetMaterialSoundIDs(materialKey)
     return CollectMaterialFileDataIDs(materialKey)
 end
 
---- Get the human-readable name for a SoundKitID
--- @param soundKitID number - The SoundKitID
+--- Get the human-readable name for a SoundKit indexed key
+-- @param soundKitID string|number
 -- @return string|nil - The constant name, or nil
 function lib:GetSoundKitName(soundKitID)
     if self.SoundKitData and self.SoundKitData[soundKitID] then
-        return self.SoundKitData[soundKitID].name
+        return soundKitID -- the table is now string keyed
+    elseif type(soundKitID) == "number" and self.SoundKitByName then
+        return self.SoundKitByName[soundKitID]
     end
     return nil
 end
