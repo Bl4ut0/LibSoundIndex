@@ -1,0 +1,20 @@
+## Interface: 11601, 16001
+## Title: LibSoundIndex-1.0
+## Notes: Sound kit lookup and file muting for WoW addons.
+## Author: Bl4ut
+## Version: 2.0.0
+## X-Category: Library
+## X-License: MIT
+## X-Curse-Project-ID: 1476448
+## AllowLoadGameType: camelot
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+
+LibSoundIndex-1.0.lua
+
+Data\MaterialSounds.lua
+Data\SoundKitIndex.lua
+Data\ItemSounds_Forever.lua
+Data\SoundKitLookup_Forever_1.lua
+LibSoundIndexDebug.lua

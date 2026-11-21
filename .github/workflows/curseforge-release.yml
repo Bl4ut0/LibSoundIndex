@@ -1,0 +1,100 @@
+name: LibSoundIndex release
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag. Leave blank to check the main branch.
+        type: string
+      upload:
+        description: Submit the named published release to CurseForge
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: libsoundindex-release-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Run library and release tests
+        run: |
+          lua5.1 tests/item_sound_mutes.lua
+          lua5.1 tests/sound_profile.lua
+          python3 -B -m unittest discover -s tests -p test_release.py
+      - name: Validate the installable package
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          args=()
+          if [[ -n "$RELEASE_TAG" ]]; then args+=(--tag "$RELEASE_TAG"); fi
+          python3 scripts/release.py build "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LibSoundIndex-package
+          path: .versions/Release/LibSoundIndex-*.zip*
+          if-no-files-found: error
+
+  check-curseforge:
+    if: github.event_name == 'workflow_dispatch' && !inputs.upload
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the existing Actions secret and CurseForge version IDs
+        env:
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          args=()
+          if [[ -n "$RELEASE_TAG" ]]; then args+=(--tag "$RELEASE_TAG"); fi
+          python3 scripts/release.py check "${args[@]}"
+
+  publish:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload)
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Attach the checked package and submit it to CurseForge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: python3 scripts/release.py publish --tag "$RELEASE_TAG"
+      - name: Retain CurseForge deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: curseforge-evidence-${{ github.run_id }}
+          path: .versions/Release/curseforge-*.json
+          if-no-files-found: ignore

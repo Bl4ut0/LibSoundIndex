@@ -28,6 +28,7 @@ node_modules/
 *.sw?
 *.bak
 *~
+.versions/
 
 # WoW Addon specific excludes
 *.bak
@@ -53,3 +54,6 @@ GITHUB_DESCRIPTION.md
 CURSEFORGE_DESCRIPTION.md
 *.csv
 *.py
+!scripts/generate_item_sounds.py
+!scripts/release.py
+!tests/test_release.py

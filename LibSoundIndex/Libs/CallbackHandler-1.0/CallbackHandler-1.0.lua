@@ -6,6 +6,27 @@ if not CallbackHandler then return end -- No upgrade needed
 
 local meta = {__index = function(tbl, key) tbl[key] = {} return tbl[key] end}
 
+local function Dispatch(handlers, ...)
+    for obj, reg in pairs(handlers) do
+        local method, args = reg[1], reg[2]
+        local ok, err
+        if type(method) == "string" then
+            if args then
+                ok, err = pcall(obj[method], obj, args[1], ...)
+            else
+                ok, err = pcall(obj[method], obj, ...)
+            end
+        elseif args then
+            ok, err = pcall(method, args[1], ...)
+        else
+            ok, err = pcall(method, ...)
+        end
+        if not ok and type(geterrorhandler) == "function" then
+            pcall(geterrorhandler(), err)
+        end
+    end
+end
+
 function CallbackHandler:New(target, RegisterName, UnregisterName, UnregisterAllName)
     RegisterName = RegisterName or "RegisterCallback"
     UnregisterName = UnregisterName or "UnregisterCallback"
@@ -91,23 +112,4 @@ function CallbackHandler:New(target, RegisterName, UnregisterName, UnregisterAll
     end
 
     return registry
-end
-
-local function Dispatch(handlers, ...)
-    for obj, reg in pairs(handlers) do
-        local method, args = reg[1], reg[2]
-        if type(method) == "string" then
-            if args then
-                obj[method](obj, unpack(args), ...)
-            else
-                obj[method](obj, ...)
-            end
-        elseif type(method) == "function" then
-            if args then
-                method(unpack(args), ...)
-            else
-                method(...)
-            end
-        end
-    end
 end

@@ -1,38 +1,10 @@
--- LibSoundIndex-1.0.lua
--- Universal sound index and muting library for WoW addons (Classic Era & TBC Anniversary)
--- Provides FileDataID lookups and surgical MuteSoundFile() control
---
--- API:
---   lib:GetFileDataIDs(soundKitID)       → table of FileDataIDs
---   lib:GetCategories()                  → table of category names
---   lib:GetCategoryIDs(category)         → table of FileDataIDs
---   lib:GetMaterialSoundIDs(materialKey) → table of FileDataIDs
---   lib:GetSoundKitName(soundKitID)      → string name
---
---   lib:MuteCategory(category)           → mute all sounds in a category
---   lib:UnmuteCategory(category)         → unmute all sounds in a category
---   lib:MuteSoundKit(soundKitID)         → mute a specific SoundKit
---   lib:UnmuteSoundKit(soundKitID)       → unmute a specific SoundKit
---   lib:MuteFileDataID(fileDataID)       → mute a single FileDataID
---   lib:UnmuteFileDataID(fileDataID)     → unmute a single FileDataID
---   lib:MuteMaterial(materialKey)        → mute a material sound group
---   lib:UnmuteMaterial(materialKey)      → unmute a material sound group
---   lib:MuteEquipCategory(equipCat)      → mute a convenience equip category
---   lib:UnmuteEquipCategory(equipCat)    → unmute a convenience equip category
---   lib:MuteForDuration(category, secs)  → mute, auto-unmute after duration
---   lib:MuteAll()                        → mute everything indexed
---   lib:UnmuteAll()                      → unmute everything indexed
---   lib:IsMuted(fileDataID)              → boolean
---   lib:IsCategoryMuted(category)        → boolean
---
--- Callbacks:
---   OnCategoryMuted(category)
---   OnCategoryUnmuted(category)
---   OnSoundMuted(fileDataID)
---   OnSoundUnmuted(fileDataID)
 
-local MAJOR, MINOR = "LibSoundIndex-1.0", 1
+-- LibSoundIndex-1.0.lua
+-- Look up and mute WoW sound files by FileDataID. See API.md for usage.
+
+local MAJOR, MINOR = "LibSoundIndex-1.0", 3
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
+
 if not lib then return end
 
 -- CallbackHandler
@@ -40,63 +12,92 @@ if not lib.callbacks then
     lib.callbacks = LibStub("CallbackHandler-1.0"):New(lib)
 end
 
--- State tracking
-lib.mutedFiles = lib.mutedFiles or {} -- [fileDataID] = true if currently muted
-lib.mutedCategories = lib.mutedCategories or {} -- [category] = true
-lib.durationTimers = lib.durationTimers or {} -- [category] = timerHandle
 
--- =============================================================================
--- INTERNAL HELPERS
--- =============================================================================
+-- Each library operation owns its file mutes independently.
+lib.mutedFiles = lib.mutedFiles or {}
+lib.mutedCategories = lib.mutedCategories or {}
+lib.fileOwners = lib.fileOwners or {}
+lib.categoryOwners = lib.categoryOwners or {}
+lib.durationTimers = {}
 
-local function MuteFile(fileDataID)
-    if not lib.mutedFiles[fileDataID] then
-        MuteSoundFile(fileDataID)
-        lib.mutedFiles[fileDataID] = true
-        lib.callbacks:Fire("OnSoundMuted", fileDataID)
+for id in pairs(lib.mutedFiles) do
+    lib.fileOwners[id] = lib.fileOwners[id] or { direct = true }
+end
+
+local function IsID(value)
+    return (not issecretvalue or not issecretvalue(value))
+        and type(value) == "number" and value > 0 and value < math.huge and value % 1 == 0
+end
+
+local function HasMuteAPI()
+    return type(MuteSoundFile) == "function" and type(UnmuteSoundFile) == "function"
+end
+
+local function MuteFile(id, owner)
+    if not IsID(id) or not HasMuteAPI() then return false end
+
+    local owners = lib.fileOwners[id]
+    if owners then
+        owners[owner] = true
+    else
+        local ok, result = pcall(MuteSoundFile, id)
+        if not ok or result == false then return false end
+        lib.fileOwners[id] = { [owner] = true }
+        lib.mutedFiles[id] = true
+        lib.callbacks:Fire("OnSoundMuted", id)
     end
+    return true
 end
 
-local function UnmuteFile(fileDataID)
-    if lib.mutedFiles[fileDataID] then
-        UnmuteSoundFile(fileDataID)
-        lib.mutedFiles[fileDataID] = nil
-        lib.callbacks:Fire("OnSoundUnmuted", fileDataID)
+local function UnmuteFile(id, owner)
+    if not IsID(id) then return end
+    local owners = lib.fileOwners[id]
+    if not owners or not owners[owner] then return end
+    owners[owner] = nil
+    if next(owners) then return end
+
+    local ok, result = pcall(UnmuteSoundFile, id)
+    if not ok or result == false then
+        owners[owner] = true
+        return
     end
+    lib.fileOwners[id] = nil
+    lib.mutedFiles[id] = nil
+    lib.callbacks:Fire("OnSoundUnmuted", id)
 end
 
-local WOW_PROJECT_ID = _G.WOW_PROJECT_ID or _G.WOW_PROJECT_MAINLINE
+local interface = type(GetBuildInfo) == "function" and select(4, GetBuildInfo())
+lib.interfaceVersion = interface
+local project = WOW_PROJECT_ID
 
-local function GetClientKey()
-    if WOW_PROJECT_ID == _G.WOW_PROJECT_CLASSIC then return "Vanilla" end
-    if WOW_PROJECT_ID == _G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC then return "TBC" end
-    -- Fallback assuming future MoP classic expansion IDs etc. will check in correctly
-    if WOW_PROJECT_ID == 14 then return "MoP" end -- Internal designation for MoP Classic
-    return "Retail" -- Default fallback
+function lib:GetClientKey()
+    -- Forever can report the mainline project ID. Read the interface number first.
+    if type(interface) == "number" then
+        if interface == 11601 or (interface >= 16000 and interface < 17000) then return "Forever" end
+        if interface >= 10000 and interface < 20000 then return "Vanilla" end
+        if interface >= 20000 and interface < 30000 then return "TBC" end
+        if interface >= 50500 and interface < 50600 then return "MoP" end
+        if interface >= 100000 then return "Retail" end
+        return "Unknown"
+    end
+    if project and project == WOW_PROJECT_CLASSIC then return "Vanilla" end
+    if project and project == WOW_PROJECT_BURNING_CRUSADE_CLASSIC then return "TBC" end
+    if project and project == WOW_PROJECT_MAINLINE then return "Retail" end
+    return "Unknown"
 end
+
+local clientKey = lib:GetClientKey()
 
 local function GetArrayForCurrentClient(node)
-    if not node then return {} end
-    local key = GetClientKey()
-    
-    -- Exact match
-    if node[key] then return node[key] end
-    
-    -- Fallbacks (e.g., if Retail isn't populated, fall back to MoP, etc. - ascending)
-    if node.Retail then return node.Retail end
-    if node.MoP then return node.MoP end
-    if node.TBC then return node.TBC end
-    if node.Vanilla then return node.Vanilla end
-    
-    return {}
+    return node and node[clientKey] or {}
 end
 
 local function CollectCategoryFileDataIDs(category)
     local ids = {}
     if lib.SoundKitData then
-        for _, data in pairs(lib.SoundKitData) do
+        for name, data in pairs(lib.SoundKitData) do
             if data.category == category then
-                local fdids = GetArrayForCurrentClient(data)
+                local fdids = lib:GetFileDataIDs(name)
                 for _, fdid in ipairs(fdids) do
                     ids[#ids + 1] = fdid
                 end
@@ -107,6 +108,9 @@ local function CollectCategoryFileDataIDs(category)
 end
 
 local function CollectMaterialFileDataIDs(materialKey)
+    if materialKey == "JEWELRY_EQUIP" and lib.ItemSoundData then
+        return lib.ItemSoundData.accessoryFiles
+    end
     if lib.MaterialSounds and lib.MaterialSounds[materialKey] then
         return GetArrayForCurrentClient(lib.MaterialSounds[materialKey])
     end
@@ -117,25 +121,19 @@ end
 -- QUERY API
 -- =============================================================================
 
---- Get all FileDataIDs for a SoundKitID
--- @param soundKitID string|number - The SoundKit constant name (or numeric ID) to look up
--- @return table - Numerically indexed table of FileDataIDs, or empty table
+
+--- Resolve a numeric SoundKitID or a Blizzard SOUNDKIT constant name.
 function lib:GetFileDataIDs(soundKitID)
-    -- String lookup: check named SoundKitData first
-    local key = soundKitID
-    if type(soundKitID) == "number" and self.SoundKitByName then
-        key = self.SoundKitByName[soundKitID]
+    if type(soundKitID) == "string" then
+        local id = self:GetSoundKitByName(soundKitID)
+        if id and self.SoundKitLookup and self.SoundKitLookup[id] then
+            return self.SoundKitLookup[id]
+        end
+        return GetArrayForCurrentClient(self.SoundKitData and self.SoundKitData[soundKitID])
     end
-
-    if self.SoundKitData and key and self.SoundKitData[key] then
-        return GetArrayForCurrentClient(self.SoundKitData[key])
+    if type(soundKitID) == "number" then
+        return self:GetFileDataIDsBySoundKitID(soundKitID)
     end
-
-    -- Fallthrough: check the universal SoundKitLookup table (numeric ID only)
-    if type(soundKitID) == "number" and self.SoundKitLookup and self.SoundKitLookup[soundKitID] then
-        return self.SoundKitLookup[soundKitID]
-    end
-
     return {}
 end
 
@@ -183,26 +181,27 @@ function lib:GetMaterialSoundIDs(materialKey)
     return CollectMaterialFileDataIDs(materialKey)
 end
 
---- Get the human-readable name for a SoundKit indexed key
--- @param soundKitID string|number
--- @return string|nil - The constant name, or nil
-function lib:GetSoundKitName(soundKitID)
-    if self.SoundKitData and self.SoundKitData[soundKitID] then
-        return soundKitID -- the table is now string keyed
-    elseif type(soundKitID) == "number" and self.SoundKitByName then
-        return self.SoundKitByName[soundKitID]
+
+local soundKitNames = {}
+for name, id in pairs(SOUNDKIT or {}) do
+    local previous = soundKitNames[id]
+    if not previous or name < previous then
+        soundKitNames[id] = name
     end
-    return nil
 end
 
---- Look up a SoundKitID by its constant name
--- @param name string - The constant name (e.g., "IG_BACKPACK_OPEN")
--- @return number|nil - The SoundKitID, or nil
-function lib:GetSoundKitByName(name)
-    if self.SoundKitByName then
-        return self.SoundKitByName[name]
+function lib:GetSoundKitName(soundKitID)
+    if type(soundKitID) == "string" then
+        if self:GetSoundKitByName(soundKitID) or (self.SoundKitData and self.SoundKitData[soundKitID]) then
+            return soundKitID
+        end
+    else
+        return soundKitNames[soundKitID]
     end
-    return nil
+end
+
+function lib:GetSoundKitByName(name)
+    return SOUNDKIT and SOUNDKIT[name]
 end
 
 --- Get all available material sound keys
@@ -233,181 +232,231 @@ end
 -- MUTE / UNMUTE API
 -- =============================================================================
 
---- Mute a single FileDataID
--- @param fileDataID number - The FileDataID to mute
-function lib:MuteFileDataID(fileDataID)
-    MuteFile(fileDataID)
-end
 
---- Unmute a single FileDataID
--- @param fileDataID number - The FileDataID to unmute
-function lib:UnmuteFileDataID(fileDataID)
-    UnmuteFile(fileDataID)
-end
-
---- Check if a specific FileDataID is currently muted
--- @param fileDataID number - The FileDataID to check
--- @return boolean
-function lib:IsMuted(fileDataID)
-    return self.mutedFiles[fileDataID] == true
-end
-
---- Mute all sounds for a SoundKitID
--- @param soundKitID number - The SoundKitID to mute
-function lib:MuteSoundKit(soundKitID)
-    local ids = self:GetFileDataIDs(soundKitID)
-    if ids then
-        for _, fdid in ipairs(ids) do
-            MuteFile(fdid)
+local function SetFileMutes(ids, owner, muted)
+    for _, id in ipairs(ids) do
+        if muted then
+            MuteFile(id, owner)
+        else
+            UnmuteFile(id, owner)
         end
     end
 end
 
---- Unmute all sounds for a SoundKitID
--- @param soundKitID number - The SoundKitID to unmute
-function lib:UnmuteSoundKit(soundKitID)
-    local ids = self:GetFileDataIDs(soundKitID)
-    if ids then
-        for _, fdid in ipairs(ids) do
-            UnmuteFile(fdid)
+function lib:MuteFileDataID(id)
+    MuteFile(id, "direct")
+end
+
+function lib:UnmuteFileDataID(id)
+    UnmuteFile(id, "direct")
+end
+
+function lib:IsMuted(id)
+    return self.mutedFiles[id] == true
+end
+
+local function SetSoundKitMute(kit, muted)
+    if type(kit) ~= "string" and not IsID(kit) then return end
+    local owner = "kit:" .. tostring(lib:GetSoundKitByName(kit) or kit)
+    SetFileMutes(lib:GetFileDataIDs(kit), owner, muted)
+end
+
+function lib:MuteSoundKit(kit)
+    SetSoundKitMute(kit, true)
+end
+
+function lib:UnmuteSoundKit(kit)
+    SetSoundKitMute(kit, false)
+end
+
+local function SetCategoryMute(category, ids, owner, muted)
+    local owners = lib.categoryOwners[category]
+    local wasMuted = owners ~= nil
+    if muted then
+        local acquired = false
+        for _, id in ipairs(ids) do
+            if MuteFile(id, owner) then acquired = true end
+        end
+        if not acquired then return end
+        owners = owners or {}
+        owners[owner] = true
+        lib.categoryOwners[category] = owners
+        lib.mutedCategories[category] = true
+        if not wasMuted then lib.callbacks:Fire("OnCategoryMuted", category) end
+    elseif owners and owners[owner] then
+        SetFileMutes(ids, owner, false)
+        owners[owner] = nil
+        if not next(owners) then
+            lib.categoryOwners[category] = nil
+            lib.mutedCategories[category] = nil
+            lib.callbacks:Fire("OnCategoryUnmuted", category)
         end
     end
 end
 
---- Mute all sounds in a sound category (e.g., "BAGS", "QUEST", "PVP")
--- @param category string - The category name
 function lib:MuteCategory(category)
-    local ids = CollectCategoryFileDataIDs(category)
-    for _, fdid in ipairs(ids) do
-        MuteFile(fdid)
-    end
-    self.mutedCategories[category] = true
-    self.callbacks:Fire("OnCategoryMuted", category)
+    SetCategoryMute(category, self:GetCategoryIDs(category), "category:" .. category, true)
 end
 
---- Unmute all sounds in a sound category
--- @param category string - The category name
 function lib:UnmuteCategory(category)
-    local ids = CollectCategoryFileDataIDs(category)
-    for _, fdid in ipairs(ids) do
-        UnmuteFile(fdid)
-    end
-    self.mutedCategories[category] = nil
-    self.callbacks:Fire("OnCategoryUnmuted", category)
+    SetCategoryMute(category, self:GetCategoryIDs(category), "category:" .. category, false)
 end
 
---- Check if a category is currently muted
--- @param category string - The category name
--- @return boolean
 function lib:IsCategoryMuted(category)
     return self.mutedCategories[category] == true
 end
 
---- Mute all sounds for a material key (e.g., "PLATE_FOLEY", "CHAIN_FOLEY")
--- @param materialKey string - The material sound key
-function lib:MuteMaterial(materialKey)
-    local ids = CollectMaterialFileDataIDs(materialKey)
-    for _, fdid in ipairs(ids) do
-        MuteFile(fdid)
-    end
-    self.mutedCategories["MATERIAL_" .. materialKey] = true
-    self.callbacks:Fire("OnCategoryMuted", "MATERIAL_" .. materialKey)
+local function SetMaterialMute(key, owner, muted)
+    SetCategoryMute("MATERIAL_" .. key, lib:GetMaterialSoundIDs(key), owner, muted)
 end
 
---- Unmute all sounds for a material key
--- @param materialKey string - The material sound key
-function lib:UnmuteMaterial(materialKey)
-    local ids = CollectMaterialFileDataIDs(materialKey)
-    for _, fdid in ipairs(ids) do
-        UnmuteFile(fdid)
-    end
-    self.mutedCategories["MATERIAL_" .. materialKey] = nil
-    self.callbacks:Fire("OnCategoryUnmuted", "MATERIAL_" .. materialKey)
+function lib:MuteMaterial(key)
+    SetMaterialMute(key, "material:" .. key, true)
 end
 
---- Mute an equip convenience category (e.g., "ALL_EQUIP", "ALL_ARMOR_FOLEY", "PLATE", "MAIL")
--- @param equipCat string - The equip category name from EquipCategories
-function lib:MuteEquipCategory(equipCat)
-    if not self.EquipCategories or not self.EquipCategories[equipCat] then return end
-    for _, materialKey in ipairs(self.EquipCategories[equipCat]) do
-        self:MuteMaterial(materialKey)
+function lib:UnmuteMaterial(key)
+    SetMaterialMute(key, "material:" .. key, false)
+end
+
+local function SetEquipMute(category, owner, muted)
+    local keys = lib.EquipCategories and lib.EquipCategories[category] or {}
+    for _, key in ipairs(keys) do
+        -- Use one owner per material so releasing one cannot release a shared file early.
+        SetMaterialMute(key, owner .. ":" .. key, muted)
     end
 end
 
---- Unmute an equip convenience category
--- @param equipCat string - The equip category name
-function lib:UnmuteEquipCategory(equipCat)
-    if not self.EquipCategories or not self.EquipCategories[equipCat] then return end
-    for _, materialKey in ipairs(self.EquipCategories[equipCat]) do
-        self:UnmuteMaterial(materialKey)
-    end
+function lib:MuteEquipCategory(category)
+    SetEquipMute(category, "equip:" .. category, true)
 end
 
---- Mute a category for a specified duration, then auto-unmute
--- @param category string - Category name, material key, or equip category
--- @param duration number - Seconds before auto-unmute (default 1.0)
-function lib:MuteForDuration(category, duration)
-    duration = duration or 1.0
+function lib:UnmuteEquipCategory(category)
+    SetEquipMute(category, "equip:" .. category, false)
+end
 
-    -- Cancel any existing timer for this category
-    if self.durationTimers[category] then
-        -- C_Timer handles are not cancellable directly, but we use a flag
-        self.durationTimers[category] = nil
-    end
+local function After(duration, callback)
+    if type(duration) ~= "number" or not (duration > 0 and duration < math.huge)
+        or not C_Timer or type(C_Timer.After) ~= "function" then return false end
+    return pcall(C_Timer.After, duration, callback)
+end
 
-    -- Determine what type of category this is and mute it
-    if self.EquipCategories and self.EquipCategories[category] then
-        self:MuteEquipCategory(category)
-    elseif self.MaterialSounds and self.MaterialSounds[category] then
-        self:MuteMaterial(category)
+local function SetTimedCategory(category, owner, muted)
+    if lib.EquipCategories and lib.EquipCategories[category] then
+        SetEquipMute(category, owner, muted)
+    elseif lib.MaterialSounds and lib.MaterialSounds[category] then
+        SetMaterialMute(category, owner, muted)
     else
-        self:MuteCategory(category)
+        SetCategoryMute(category, lib:GetCategoryIDs(category), owner, muted)
     end
+end
 
-    -- Set up auto-unmute
-    local timerID = {} -- unique reference
-    self.durationTimers[category] = timerID
-    C_Timer.After(duration, function()
-        -- Only unmute if our timer is still the active one (not overridden)
-        if lib.durationTimers[category] == timerID then
+function lib:MuteForDuration(category, duration)
+    if type(category) ~= "string" then return end
+    local timer = {}
+    local owner = "timer:" .. category
+    if not After(duration or 1, function()
+        if lib.durationTimers[category] == timer then
             lib.durationTimers[category] = nil
-            if lib.EquipCategories and lib.EquipCategories[category] then
-                lib:UnmuteEquipCategory(category)
-            elseif lib.MaterialSounds and lib.MaterialSounds[category] then
-                lib:UnmuteMaterial(category)
-            else
-                lib:UnmuteCategory(category)
-            end
+            SetTimedCategory(category, owner, false)
         end
-    end)
+    end) then return end
+    self.durationTimers[category] = timer
+    SetTimedCategory(category, owner, true)
 end
 
---- Mute ALL indexed sounds (material + SoundKit)
+--- Acquire a timed mute for each distinct FileDataID and return the number acquired.
+function lib:MuteFileDataIDsForDuration(ids, duration)
+    if type(ids) ~= "table" or #ids == 0 or not HasMuteAPI() then return 0 end
+    local files = {}
+    if not After(duration or 0.35, function()
+        for id in pairs(files) do
+            UnmuteFile(id, files)
+        end
+    end) then return 0 end
+
+    local count = 0
+    for _, id in ipairs(ids) do
+        if IsID(id) and not files[id] and MuteFile(id, files) then
+            files[id] = true
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function GetItemID(item)
+    if issecretvalue and issecretvalue(item) then return end
+    if type(item) == "string" then
+        item = tonumber(item:match("|Hitem:(%d+)") or item:match("^item:(%d+)")
+            or item:match("^(%d+):") or item:match("^(%d+)$"))
+    end
+    if IsID(item) then return item end
+end
+
+--- Return a copy of the candidate sound files for an equipment item.
+function lib:GetItemSoundFileDataIDs(item)
+    local data = self.ItemSoundData
+    local itemID = GetItemID(item)
+    local key = data and itemID and data.itemSets[itemID]
+    local result = {}
+    if key then
+        for i, id in ipairs(data.fileSets[key]) do result[i] = id end
+    end
+    return result
+end
+
+function lib:CanMuteItemSounds()
+    return self.ItemSoundData ~= nil and HasMuteAPI()
+        and C_Timer ~= nil and type(C_Timer.After) == "function"
+end
+
+--- Call immediately before submitting an equipment move.
+function lib:MuteItemSwapSounds(source, destination, duration)
+    local files = self:GetItemSoundFileDataIDs(source)
+    for _, id in ipairs(self:GetItemSoundFileDataIDs(destination)) do
+        files[#files + 1] = id
+    end
+    local acquired = self:MuteFileDataIDsForDuration(files, duration)
+    if self.RecordProfileSwapMute then
+        self:RecordProfileSwapMute(GetItemID(source), GetItemID(destination), files, acquired, duration or 0.35)
+    end
+    return acquired
+end
+
+--- Mute the curated material and named sound groups.
 function lib:MuteAll()
-    -- Material sounds
-    if self.MaterialSounds then
-        for key in pairs(self.MaterialSounds) do
-            self:MuteMaterial(key)
-        end
+    for key in pairs(self.MaterialSounds or {}) do
+        self:MuteMaterial(key)
     end
-    -- SoundKit sounds
-    if self.SoundKitData then
-        for skid in pairs(self.SoundKitData) do
-            self:MuteSoundKit(skid)
+    for kit in pairs(self.SoundKitData or {}) do
+        self:MuteSoundKit(kit)
+    end
+end
+
+function lib:UnmuteAll()
+    self.durationTimers = {}
+    self.categoryOwners = {}
+    self.mutedCategories = {}
+    for id in pairs(self.mutedFiles) do
+        local ok, result = pcall(UnmuteSoundFile, id)
+        if ok and result ~= false then
+            self.fileOwners[id] = nil
+            self.mutedFiles[id] = nil
+            self.callbacks:Fire("OnSoundUnmuted", id)
         end
     end
 end
 
---- Unmute ALL indexed sounds
-function lib:UnmuteAll()
-    -- Just unmute everything we've tracked
-    for fdid in pairs(self.mutedFiles) do
-        UnmuteSoundFile(fdid)
-        self.callbacks:Fire("OnSoundUnmuted", fdid)
+function lib:DebugAnalyzeItem(item)
+    local itemID = GetItemID(item)
+    if not itemID then
+        print("LibSoundIndex: supply an item ID or link.")
+        return
     end
-    wipe(self.mutedFiles)
-    wipe(self.mutedCategories)
-    wipe(self.durationTimers)
+    local files = self:GetItemSoundFileDataIDs(itemID)
+    local build = self.ItemSoundData and self.ItemSoundData.build or "unavailable"
+    print(("LibSoundIndex: item %d, %s data %s, candidate files: %s"):format(
+        itemID, clientKey, build, #files > 0 and table.concat(files, ", ") or "none"))
 end
 
 -- =============================================================================
@@ -419,17 +468,17 @@ function lib:PrintInfo()
     local materialCount = 0
     local materialFileCount = 0
     if self.MaterialSounds then
-        for _, data in pairs(self.MaterialSounds) do
+        for key in pairs(self.MaterialSounds) do
             materialCount = materialCount + 1
-            materialFileCount = materialFileCount + #GetArrayForCurrentClient(data)
+            materialFileCount = materialFileCount + #self:GetMaterialSoundIDs(key)
         end
     end
     local soundKitCount = 0
     local soundKitFileCount = 0
     if self.SoundKitData then
-        for _, data in pairs(self.SoundKitData) do
+        for name in pairs(self.SoundKitData) do
             soundKitCount = soundKitCount + 1
-            soundKitFileCount = soundKitFileCount + #GetArrayForCurrentClient(data)
+            soundKitFileCount = soundKitFileCount + #self:GetFileDataIDs(name)
         end
     end
     local lookupCount = 0
@@ -443,29 +492,13 @@ function lib:PrintInfo()
     local mutedCount = 0
     for _ in pairs(self.mutedFiles) do mutedCount = mutedCount + 1 end
 
-    print("|cff00ff00LibSoundIndex-1.0|r (" .. GetClientKey() .. ")")
+    print("|cff00ff00LibSoundIndex-1.0|r (" .. clientKey .. ")")
     print(("  Material sounds: %d groups, %d FileDataIDs"):format(materialCount, materialFileCount))
     print(("  Named SoundKits: %d kits, %d FileDataIDs"):format(soundKitCount, soundKitFileCount))
     print(("  Universal Lookup: %d SoundKitIDs, %d FileDataIDs"):format(lookupCount, lookupFileCount))
-    print(("  Currently muted: %d FileDataIDs"):format(mutedCount))
-end
-
--- Slash command for debugging
-SLASH_LIBSOUNDINDEX1 = "/lsi"
-SlashCmdList["LIBSOUNDINDEX"] = function(msg)
-    msg = strtrim(msg or "")
-    if msg == "" or msg == "info" then
-        lib:PrintInfo()
-    elseif msg == "muteall" then
-        lib:MuteAll()
-        print("|cff00ff00LibSoundIndex|r: All indexed sounds muted.")
-    elseif msg == "unmuteall" then
-        lib:UnmuteAll()
-        print("|cff00ff00LibSoundIndex|r: All sounds unmuted.")
-    else
-        print("|cff00ff00LibSoundIndex-1.0|r commands:")
-        print("  /lsi info - Show library stats")
-        print("  /lsi muteall - Mute all indexed sounds")
-        print("  /lsi unmuteall - Unmute all sounds")
+    print(("  Currently muted: %d FileDataIDs (%s)"):format(mutedCount,
+        HasMuteAPI() and "file muting available" or "file muting unavailable"))
+    if self.ItemSoundData then
+        print("  Equipment sound data: " .. self.ItemSoundData.build)
     end
 end
