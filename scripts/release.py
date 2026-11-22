@@ -76,23 +76,43 @@ def inspect_archive(data, version=None):
         return [GAME_VERSIONS[interface] for interface in sorted(interfaces - {11601})]
 
 
-def build_archive(ref, tag, output):
+def require_source_files(data, expected):
+    with ZipFile(BytesIO(data)) as actual, ZipFile(BytesIO(expected)) as source:
+        names = {entry.filename for entry in source.infolist() if not entry.is_dir()}
+        if names != {entry.filename for entry in actual.infolist() if not entry.is_dir()}:
+            raise ValueError("Verified archive file list differs from the Git ref.")
+        for name in sorted(names):
+            if actual.read(name) != source.read(name):
+                raise ValueError(f"Verified archive differs from the Git ref at {name}")
+
+
+def build_archive(ref, tag, output, verified=False):
     if tag is not None and not TAG_PATTERN.fullmatch(tag):
         raise ValueError("Release tag must be vX.Y.Z or vX.Y.Z-betaN.")
     commit = resolve_commit(ref)
     if tag and resolve_commit(f"refs/tags/{tag}") != commit:
         raise ValueError("Source commit does not match the release tag.")
     version = tag[1:] if tag else None
-    data = git("archive", "--format=zip", commit, "--", f"{ADDON}/")
-    game_versions = inspect_archive(data, version)
-    output.mkdir(parents=True, exist_ok=True)
+    # Use the same source bytes on Windows and Linux.
+    expected = git("-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                   "archive", "--format=zip", commit, "--", f"{ADDON}/")
     archive = output / f"{ADDON}-{tag or 'dev'}.zip"
+    checksum = archive.with_suffix(".zip.sha256")
+    data = archive.read_bytes() if verified else expected
+    game_versions = inspect_archive(data, version)
     digest = sha256(data).hexdigest()
-    archive.write_bytes(data)
-    archive.with_suffix(".zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii")
-    print(f"Built {archive.name} from {commit} (SHA-256 {digest}).")
+    checksum_text = f"{digest}  {archive.name}"
+    if verified:
+        if checksum.read_text(encoding="ascii").strip() != checksum_text:
+            raise ValueError("Verified archive SHA-256 does not match its checksum.")
+        require_source_files(data, expected)
+    else:
+        output.mkdir(parents=True, exist_ok=True)
+        archive.write_bytes(data)
+        checksum.write_text(checksum_text + "\n", encoding="ascii")
+    action = "Verified" if verified else "Built"
+    print(f"{action} {archive.name} from {commit} (SHA-256 {digest}).")
     return commit, archive, data, digest, game_versions
-
 
 def version_ids(catalog, game_versions):
     if not isinstance(catalog, list):
@@ -223,11 +243,13 @@ def main():
     parser.add_argument("command", choices=("build", "check", "publish"))
     parser.add_argument("--ref", default="HEAD")
     parser.add_argument("--tag")
+    parser.add_argument("--verified", action="store_true",
+                        help="use the existing CI ZIP and verify it against the Git ref")
     parser.add_argument("--output", type=Path, default=Path(".versions/Release"))
     args = parser.parse_args()
     if args.command == "publish" and not args.tag:
         parser.error("Publishing requires an existing published GitHub release tag.")
-    commit, archive, data, digest, game_versions = build_archive(args.ref, args.tag, args.output)
+    commit, archive, data, digest, game_versions = build_archive(args.ref, args.tag, args.output, args.verified)
     if args.command != "build":
         ids = version_ids(curseforge("/game/wow/versions"), game_versions)
         print("CurseForge authenticated. Verified versions: " + ", ".join(name for name, _ in game_versions))

@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
-from zipfile import ZipFile
+from zipfile import ZipFile, ZipInfo
 
 from scripts import release
 
@@ -32,6 +32,20 @@ class ReleaseTests(unittest.TestCase):
             release.inspect_archive(self.archive(extra="RawData/Item.csv"))
         with self.assertRaisesRegex(ValueError, "must declare Version"):
             release.inspect_archive(self.archive(), "99.0.1")
+
+    def test_verified_zip_compares_source_bytes_independent_of_zip_metadata(self):
+        def candidate(text, timestamp):
+            data = BytesIO()
+            with ZipFile(data, "w") as archive:
+                archive.writestr(ZipInfo("LibSoundIndex/example.lua", timestamp), text)
+            return data.getvalue()
+
+        first = candidate(b"same source", (2025, 1, 1, 0, 0, 0))
+        second = candidate(b"same source", (2026, 1, 1, 0, 0, 0))
+        self.assertNotEqual(first, second)
+        release.require_source_files(first, second)
+        with self.assertRaisesRegex(ValueError, "differs from the Git ref"):
+            release.require_source_files(first, candidate(b"changed source", (2026, 1, 1, 0, 0, 0)))
 
     def test_forever_uses_the_exact_version_type(self):
         catalog = [
@@ -82,7 +96,7 @@ class ReleaseTests(unittest.TestCase):
 
             with (patch.dict("os.environ", {"GITHUB_REPOSITORY": "Bl4ut0/LibSoundIndex"}),
                   patch.object(release, "github_api", side_effect=github),
-                  patch.object(release, "upload_file", side_effect=upload)):
+                  patch.object(release, "upload_file", side_effect=upload), patch("builtins.print")):
                 release.publish(tag, commit, archive, data, digest, [72])
             self.assertEqual(events, ["reserve", "in_progress", "upload", "success"])
 
