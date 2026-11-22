@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [Unreleased]
+## [2.1.0] - 2026-11-21
 - Added a visual sound profiler with item icons, candidate files grouped by item, per-item and all-item probes for repeat swaps, and a copyable diagnostic report.
 - Added item-level sound data and timed swap muting for Classic Era, Hardcore, Season of Discovery, TBC Anniversary, and WoW Forever.
 - Shared files stay muted until all LibSoundIndex requests that own them expire or release them.
